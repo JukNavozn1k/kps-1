@@ -132,11 +132,16 @@ with st.sidebar:
     st.divider()
     st.header("Обучение")
     optimizer_name = st.selectbox("Оптимизатор", ["Adam", "SGD", "RMSprop", "Adagrad"], index=0)
-    learning_rate = st.number_input("Скорость обучения (learning rate)", min_value=1e-6, max_value=1.0, value=1e-3, format="%.6f")
+    learning_rate = st.number_input("Скорость обучения (learning rate)", min_value=1e-6, max_value=1.0, value=5e-4, format="%.6f")
     loss_name = st.selectbox("Функция ошибки", ["mse", "mae", "huber"], index=0, format_func=lambda x: {"mse": "MSE", "mae": "MAE", "huber": "Huber"}[x])
-    epochs = st.number_input("Эпохи", min_value=1, max_value=500, value=30)
-    batch_size = st.number_input("Размер батча", min_value=4, max_value=4096, value=64, step=4)
+    epochs = st.number_input("Эпохи", min_value=1, max_value=500, value=100)
+    batch_size = st.number_input("Размер батча", min_value=4, max_value=4096, value=32, step=4)
     demo_batches = st.number_input("Демо backprop (батчей в 1-й эпохе)", min_value=1, max_value=200, value=15)
+
+    st.subheader("Регуляризация")
+    l2_strength = st.slider("L2 регуляризация", 0.0, 0.1, 0.01, 0.001, help="Штраф за большие веса")
+    l1_strength = st.slider("L1 регуляризация", 0.0, 0.1, 0.0, 0.001, help="Обнуление незначительных весов")
+    early_stopping_patience = st.number_input("Early stopping (эпохи)", min_value=5, max_value=100, value=15, help="Останов если валидация не улучшается")
 
     train_clicked = st.button("Запустить обучение", type="primary")
 
@@ -188,7 +193,7 @@ with tab_train:
     if train_clicked:
         specs = _layers_to_specs(st.session_state.layers)
         if model_type == "FNN":
-            model = build_fnn(ds.X_train.shape[1], specs)
+            model = build_fnn(ds.X_train.shape[1], specs, l1_strength=float(l1_strength), l2_strength=float(l2_strength))
         else:
             model = build_cfnn(
                 ds.X_train.shape[1],
@@ -197,6 +202,8 @@ with tab_train:
                 include_prev_hidden_to_hidden=bool(cfnn_include_prev_hidden_to_hidden),
                 include_input_to_output=bool(cfnn_include_input_to_output),
                 include_hidden_to_output=bool(cfnn_include_hidden_to_output),
+                l1_strength=float(l1_strength),
+                l2_strength=float(l2_strength),
             )
 
         opt = make_optimizer(optimizer_name, float(learning_rate))
@@ -214,6 +221,7 @@ with tab_train:
                 epochs=int(epochs),
                 batch_size=int(batch_size),
                 demo_batches=int(demo_batches),
+                early_stopping_patience=int(early_stopping_patience),
                 seed=42,
             )
 

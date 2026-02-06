@@ -55,6 +55,7 @@ def train_with_backprop_demo(
     epochs: int,
     batch_size: int,
     demo_batches: int = 3,
+    early_stopping_patience: int = 15,
     seed: int = 42,
 ) -> TrainResult:
     rng = np.random.default_rng(seed)
@@ -64,20 +65,23 @@ def train_with_backprop_demo(
 
     n = len(X_train)
     steps_per_epoch = int(np.ceil(n / batch_size))
+    
+    best_val_loss = float('inf')
+    patience_counter = 0
 
     for epoch in range(epochs):
         order = np.arange(n)
         rng.shuffle(order)
-        X_train = X_train[order]
-        y_train = y_train[order]
+        X_train_shuffled = X_train[order]
+        y_train_shuffled = y_train[order]
 
         epoch_losses: list[float] = []
 
         for step in range(steps_per_epoch):
             start = step * batch_size
             end = min(n, (step + 1) * batch_size)
-            xb = tf.convert_to_tensor(X_train[start:end])
-            yb = tf.convert_to_tensor(y_train[start:end])
+            xb = tf.convert_to_tensor(X_train_shuffled[start:end])
+            yb = tf.convert_to_tensor(y_train_shuffled[start:end])
 
             with tf.GradientTape() as tape:
                 pred = model(xb, training=True)
@@ -110,5 +114,14 @@ def train_with_backprop_demo(
 
         history["loss"].append(train_loss)
         history["val_loss"].append(val_loss)
+        
+        # Early stopping logic
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            patience_counter = 0
+        else:
+            patience_counter += 1
+            if patience_counter >= early_stopping_patience:
+                break
 
     return TrainResult(history=history, backprop_steps=backprop_steps)

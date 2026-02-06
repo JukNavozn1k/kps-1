@@ -35,20 +35,27 @@ def build_fnn(
     layers: list[DenseLayerSpec],
     *,
     output_dim: int = 1,
+    l1_strength: float = 0.0,
+    l2_strength: float = 0.01,
 ) -> tf.keras.Model:
     inputs = tf.keras.Input(shape=(input_dim,), name="x")
     x = inputs
+    
+    regularizer = None
+    if l1_strength > 0 or l2_strength > 0:
+        regularizer = tf.keras.regularizers.L1L2(l1=l1_strength, l2=l2_strength)
 
     for i, spec in enumerate(layers):
         x = tf.keras.layers.Dense(
             spec.units,
             activation=_activation(spec.activation),
+            kernel_regularizer=regularizer,
             name=f"dense_{i+1}",
         )(x)
         if spec.dropout and spec.dropout > 0:
             x = tf.keras.layers.Dropout(spec.dropout, name=f"dropout_{i+1}")(x)
 
-    outputs = tf.keras.layers.Dense(output_dim, activation="linear", name="y")(x)
+    outputs = tf.keras.layers.Dense(output_dim, activation="linear", kernel_regularizer=regularizer, name="y")(x)
     return tf.keras.Model(inputs=inputs, outputs=outputs, name="FNN")
 
 
@@ -61,8 +68,14 @@ def build_cfnn(
     include_prev_hidden_to_hidden: bool = True,
     include_input_to_output: bool = True,
     include_hidden_to_output: bool = True,
+    l1_strength: float = 0.0,
+    l2_strength: float = 0.01,
 ) -> tf.keras.Model:
     inputs = tf.keras.Input(shape=(input_dim,), name="x")
+    
+    regularizer = None
+    if l1_strength > 0 or l2_strength > 0:
+        regularizer = tf.keras.regularizers.L1L2(l1=l1_strength, l2=l2_strength)
 
     hidden_outputs: list[tf.Tensor] = []
     for i, spec in enumerate(layers):
@@ -82,6 +95,7 @@ def build_cfnn(
         h = tf.keras.layers.Dense(
             spec.units,
             activation=_activation(spec.activation),
+            kernel_regularizer=regularizer,
             name=f"dense_{i+1}",
         )(concat)
         if spec.dropout and spec.dropout > 0:
@@ -101,5 +115,5 @@ def build_cfnn(
     else:
         out_inp = tf.keras.layers.Concatenate(name="concat_out")(out_concat)
 
-    outputs = tf.keras.layers.Dense(output_dim, activation="linear", name="y")(out_inp)
+    outputs = tf.keras.layers.Dense(output_dim, activation="linear", kernel_regularizer=regularizer, name="y")(out_inp)
     return tf.keras.Model(inputs=inputs, outputs=outputs, name="CFNN")

@@ -102,18 +102,11 @@ def load_ftball_dataset(
         "odds_1",
         "odds_X",
         "odds_2",
-        "odds_1X",
-        "odds_X2",
-        "odds_12",
-        "start_year",
-        "start_month",
-        "start_day",
-        "is_expired",
     ]
 
     present_numeric = [c for c in feature_cols_numeric if c in df.columns]
 
-    cat_cols = [c for c in ["prediction", "market", "competition_name", "competition_cluster", "federation"] if c in df.columns]
+    cat_cols = [c for c in ["prediction", "market"] if c in df.columns]
 
     X_num = df[present_numeric].copy()
     for c in X_num.columns:
