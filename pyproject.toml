@@ -6,7 +6,7 @@ authors = [
     {name = "gleb",email = "deffender1337@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = [
     "matplotlib (>=3.10.8,<4.0.0)",
     "keras (>=3.13.2,<4.0.0)",
