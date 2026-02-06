@@ -1,6 +1,7 @@
 
 import pandas as pd
 import streamlit as st
+import numpy as np
 
 from kps1.data import load_ftball_dataset
 from kps1.experiments import ExperimentRecord, record_to_dict
@@ -57,6 +58,7 @@ def _layers_to_specs(layers_ui: list[dict]) -> list[DenseLayerSpec]:
                 activation=str(l["activation"]),
                 dropout=float(l["dropout"]),
             )
+
         )
     return specs
 
@@ -134,7 +136,7 @@ with st.sidebar:
     loss_name = st.selectbox("Функция ошибки", ["mse", "mae", "huber"], index=0, format_func=lambda x: {"mse": "MSE", "mae": "MAE", "huber": "Huber"}[x])
     epochs = st.number_input("Эпохи", min_value=1, max_value=500, value=30)
     batch_size = st.number_input("Размер батча", min_value=4, max_value=4096, value=64, step=4)
-    demo_batches = st.number_input("Демо backprop (батчей в 1-й эпохе)", min_value=1, max_value=20, value=3)
+    demo_batches = st.number_input("Демо backprop (батчей в 1-й эпохе)", min_value=1, max_value=200, value=15)
 
     train_clicked = st.button("Запустить обучение", type="primary")
 
@@ -221,22 +223,46 @@ with tab_train:
         st.session_state.trained_feature_names = list(ds.feature_names)
         st.session_state.trained_target = target
 
-        st.subheader("Кривые обучения")
+        y_train_pred = model.predict(ds.X_train, verbose=0).reshape(-1)
+        y_val_pred = model.predict(ds.X_val, verbose=0).reshape(-1)
+        y_train_true = ds.y_train.reshape(-1)
+        y_val_true = ds.y_val.reshape(-1)
+
+        def _rmse(y_t: np.ndarray, y_p: np.ndarray) -> float:
+            return float(np.sqrt(np.mean((y_t - y_p) ** 2)))
+
+        def _mae(y_t: np.ndarray, y_p: np.ndarray) -> float:
+            return float(np.mean(np.abs(y_t - y_p)))
+
+        def _r2(y_t: np.ndarray, y_p: np.ndarray) -> float:
+            ss_res = float(np.sum((y_t - y_p) ** 2))
+            ss_tot = float(np.sum((y_t - float(np.mean(y_t))) ** 2))
+            if ss_tot == 0:
+                return 0.0
+            return 1.0 - ss_res / ss_tot
+
+        st.subheader("Метрики качества")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("R² (валидация)", f"{_r2(y_val_true, y_val_pred):.4f}")
+        m2.metric("MAE (валидация)", f"{_mae(y_val_true, y_val_pred):.4f}")
+        m3.metric("RMSE (валидация)", f"{_rmse(y_val_true, y_val_pred):.4f}")
+
+        st.subheader("Кривые обучения (функция ошибки)")
         st.pyplot(plot_training_curves(result.history), clear_figure=True)
 
-        st.subheader("Backprop demo: нормы градиентов по параметрам (первые батчи первого epoch)")
+        st.subheader("Демо backprop: нормы градиентов по параметрам (несколько первых батчей 1-й эпохи)")
         steps_grad_dicts = [s.grad_norms for s in result.backprop_steps]
         st.pyplot(plot_backprop_gradients(steps_grad_dicts), clear_figure=True)
 
         if result.backprop_steps:
-            st.subheader("Backprop demo: подробные значения")
+            st.subheader("Демо backprop: подробные значения")
             rows = []
             for s in result.backprop_steps:
                 row = {"batch": s.batch, "loss": s.loss}
                 for k, v in list(s.grad_norms.items())[:20]:
                     row[k] = v
                 rows.append(row)
-            st.dataframe(pd.DataFrame(rows))
+            st.dataframe(pd.DataFrame(rows), width="stretch")
 
         final_train_loss = float(result.history["loss"][-1])
         final_val_loss = float(result.history["val_loss"][-1])
@@ -259,12 +285,11 @@ with tab_train:
             )
         )
 
-
-st.subheader("Таблица экспериментов")
-if st.session_state.experiments:
-    st.dataframe(pd.DataFrame(st.session_state.experiments), width="stretch")
-else:
-    st.info("Пока нет экспериментов. Запусти обучение хотя бы один раз.")
+    st.subheader("Таблица экспериментов")
+    if st.session_state.experiments:
+        st.dataframe(pd.DataFrame(st.session_state.experiments), width="stretch")
+    else:
+        st.info("Пока нет экспериментов. Запусти обучение хотя бы один раз.")
 
 
 with tab_data:
@@ -292,6 +317,25 @@ with tab_data:
     else:
         st.caption("Первые строки")
         st.dataframe(raw_df.head(200), width="stretch")
+
+    st.divider()
+    st.subheader("Предобработанный датасет (X и y)")
+    split = st.selectbox("Выбор части", ["train", "val"], index=0)
+    n_rows = st.number_input("Строк для просмотра", min_value=5, max_value=500, value=100, step=5)
+
+    if split == "train":
+        X_view = ds.X_train
+        y_view = ds.y_train
+    else:
+        X_view = ds.X_val
+        y_view = ds.y_val
+
+    X_df = pd.DataFrame(X_view[: int(n_rows)], columns=ds.feature_names)
+    y_df = pd.DataFrame({"y": y_view[: int(n_rows)].reshape(-1)})
+    st.caption("X (после предобработки; если включена стандартизация X — здесь уже стандартизовано)")
+    st.dataframe(X_df, width="stretch")
+    st.caption("y")
+    st.dataframe(y_df, width="stretch")
 
 
 with tab_pred:
