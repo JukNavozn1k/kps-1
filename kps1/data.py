@@ -136,6 +136,9 @@ def load_ftball_dataset(
         "odds_1",
         "odds_X",
         "odds_2",
+        "odds_12",
+        "odds_1X",
+        "odds_X2",
     ]
 
     present_numeric = [c for c in feature_cols_numeric if c in df.columns]

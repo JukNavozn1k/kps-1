@@ -429,8 +429,8 @@ with tab_pred:
                         "is_expired": "Матч завершён",
                     }
                     defaults_map = {
-                        "odds_1": 2.0, "odds_X": 3.2, "odds_2": 3.0,
-                        "odds_1X": 1.3, "odds_X2": 1.6, "odds_12": 1.3,
+                        "odds_1": 1.699, "odds_X": 3.989, "odds_2": 4.377,
+                        "odds_1X": 1.193, "odds_X2": 2.099, "odds_12": 1.216,
                         "start_year": 2024.0, "start_month": 1.0, "start_day": 1.0,
                         "is_expired": 0.0,
                     }
