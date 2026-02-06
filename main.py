@@ -330,6 +330,25 @@ with tab_data:
         X_view = ds.X_val
         y_view = ds.y_val
 
+    with st.expander("Основные характеристики (mean/std/min/max)", expanded=True):
+        y_vec = y_view.reshape(-1)
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("y mean", f"{float(np.mean(y_vec)):.4f}")
+        m2.metric("y std", f"{float(np.std(y_vec)):.4f}")
+        m3.metric("y min", f"{float(np.min(y_vec)):.4f}")
+        m4.metric("y max", f"{float(np.max(y_vec)):.4f}")
+
+        n_feat = st.number_input(
+            "Признаков в таблице статистик",
+            min_value=5,
+            max_value=int(len(ds.feature_names)),
+            value=min(30, int(len(ds.feature_names))),
+            step=5,
+        )
+
+        X_stats = pd.DataFrame(X_view, columns=ds.feature_names).describe().T[["mean", "std", "min", "max"]]
+        st.dataframe(X_stats.head(int(n_feat)), width="stretch")
+
     X_df = pd.DataFrame(X_view[: int(n_rows)], columns=ds.feature_names)
     y_df = pd.DataFrame({"y": y_view[: int(n_rows)].reshape(-1)})
     st.caption("X (после предобработки; если включена стандартизация X — здесь уже стандартизовано)")

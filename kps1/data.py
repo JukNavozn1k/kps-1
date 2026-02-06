@@ -153,8 +153,13 @@ def load_ftball_dataset(
     y_val = y_arr[val_idx]
 
     if standardize_X:
-        x_mean, x_std, X_train = _standardize_fit(X_train)
-        X_val = _standardize_apply(X_val, x_mean, x_std)
+        n_num = len(present_numeric)
+        if n_num > 0:
+            x_mean, x_std, X_train_num = _standardize_fit(X_train[:, :n_num])
+            X_train = X_train.copy()
+            X_train[:, :n_num] = X_train_num
+            X_val = X_val.copy()
+            X_val[:, :n_num] = _standardize_apply(X_val[:, :n_num], x_mean, x_std)
 
     y_mean: float | None = None
     y_std: float | None = None
