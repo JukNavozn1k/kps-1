@@ -143,7 +143,7 @@ def load_ftball_dataset(
 
     present_numeric = [c for c in feature_cols_numeric if c in df.columns]
 
-    cat_cols = [c for c in ["prediction", "market"] if c in df.columns]
+    cat_cols = [c for c in ["prediction", "market", "home_team", "away_team", "federation"] if c in df.columns]
 
     X_num = df[present_numeric].copy()
     for c in X_num.columns:
