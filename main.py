@@ -379,7 +379,7 @@ with tab_data:
 
         n_feat = st.number_input(
             "Признаков в таблице статистик",
-            min_value=5,
+            min_value=0,
             max_value=int(len(ds.feature_names)),
             value=min(30, int(len(ds.feature_names))),
             step=5,
