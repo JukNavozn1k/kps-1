@@ -26,6 +26,8 @@ def _init_state():
         st.session_state.trained_feature_names = None
     if "trained_target" not in st.session_state:
         st.session_state.trained_target = None
+    if "trained_label_encoders" not in st.session_state:
+        st.session_state.trained_label_encoders = None
     if "raw_df" not in st.session_state:
         try:
             st.session_state.raw_df = pd.read_csv("ftball.csv")
@@ -261,6 +263,7 @@ with tab_train:
         st.session_state.trained_model = model
         st.session_state.trained_feature_names = list(ds.feature_names)
         st.session_state.trained_target = target
+        st.session_state.trained_label_encoders = ds.label_encoders if ds.label_encoders else {}
 
         y_train_pred = model.predict(ds.X_train, verbose=0).reshape(-1)
         y_val_pred = model.predict(ds.X_val, verbose=0).reshape(-1)
@@ -346,7 +349,7 @@ with tab_data:
 Признаки строятся на основе:
 - коэффициентов `odds` (1, X, 2, 1X, X2, 12)
 - даты начала матча
-- категориальных полей (маркет, лига/страна и т.д.) через one-hot
+- категориальных полей (маркет, лига/страна и т.д.) через label encoding (целые числа)
 """
     )
 
@@ -403,73 +406,60 @@ with tab_pred:
     else:
         model = st.session_state.trained_model
         feature_names = list(st.session_state.trained_feature_names)
-
-        raw_df = st.session_state.raw_df
-        def _choices(col: str) -> list[str]:
-            if raw_df is None or col not in raw_df.columns:
-                return ["<NA>"]
-            vals = raw_df[col].astype("string")
-            uniq = sorted(set(vals.fillna("<NA>").tolist()))
-            if "<NA>" not in uniq:
-                uniq = ["<NA>"] + uniq
-            return uniq[:500]
+        label_encoders = st.session_state.trained_label_encoders if st.session_state.trained_label_encoders else {}
 
         with st.form("predict_form"):
-            st.caption("Введи параметры матча (только используемые признаки).")
+            st.caption("Введи параметры матча.")
             
-            # Численные признаки
-            numeric_features = {
-                "odds_1": ("odds 1 (коэффициент на победу хозяев)", 2.0),
-                "odds_X": ("odds X (коэффициент на ничью)", 3.2),
-                "odds_2": ("odds 2 (коэффициент на победу гостей)", 3.0),
-                "odds_1X": ("odds 1X", 1.3),
-                "odds_X2": ("odds X2", 1.6),
-                "odds_12": ("odds 12", 1.3),
-                "start_year": ("Год матча", 2024.0),
-                "start_month": ("Месяц матча", 1.0),
-                "start_day": ("День матча", 1.0),
-                "is_expired": ("Матч завершён", 0.0),
-            }
-            
-            numeric_input = {}
-            for feat_key, (label, default) in numeric_features.items():
-                if feat_key in feature_names:
-                    numeric_input[feat_key] = st.number_input(label, min_value=0.0, value=default)
-            
-            # Категориальные признаки
-            cat_features = ["prediction", "market", "competition_name", "competition_cluster", "federation"]
-            cat_input = {}
-            for feat_name in cat_features:
-                # Проверяем есть ли энкодированные версии этого признака
-                has_cat = any(f.startswith(feat_name + "_") for f in feature_names)
-                if has_cat:
-                    cat_input[feat_name] = st.selectbox(feat_name, _choices(feat_name))
+            row = {}
+            for feat_name in feature_names:
+                # Численный признак
+                if feat_name in ["odds_1", "odds_X", "odds_2", "odds_1X", "odds_X2", "odds_12", 
+                                 "start_year", "start_month", "start_day", "is_expired"]:
+                    labels_map = {
+                        "odds_1": "odds 1 (коэффициент на победу хозяев)",
+                        "odds_X": "odds X (коэффициент на ничью)",
+                        "odds_2": "odds 2 (коэффициент на победу гостей)",
+                        "odds_1X": "odds 1X",
+                        "odds_X2": "odds X2",
+                        "odds_12": "odds 12",
+                        "start_year": "Год матча",
+                        "start_month": "Месяц матча",
+                        "start_day": "День матча",
+                        "is_expired": "Матч завершён",
+                    }
+                    defaults_map = {
+                        "odds_1": 2.0, "odds_X": 3.2, "odds_2": 3.0,
+                        "odds_1X": 1.3, "odds_X2": 1.6, "odds_12": 1.3,
+                        "start_year": 2024.0, "start_month": 1.0, "start_day": 1.0,
+                        "is_expired": 0.0,
+                    }
+                    label = labels_map.get(feat_name, feat_name)
+                    default = defaults_map.get(feat_name, 0.0)
+                    row[feat_name] = st.number_input(label, min_value=0.0, value=default, key=f"input_{feat_name}")
+                
+                # Категориальный признак (label encoded)
+                elif feat_name in label_encoders:
+                    le = label_encoders[feat_name]
+                    # Получаем список доступных категорий
+                    available_cats = list(le.classes_)
+                    selected_cat = st.selectbox(
+                        f"{feat_name} (категория)",
+                        available_cats,
+                        key=f"select_{feat_name}"
+                    )
+                    # Кодируем выбор пользователя
+                    encoded_val = int(le.transform([selected_cat])[0])
+                    row[feat_name] = encoded_val
 
             submitted = st.form_submit_button("Посчитать предикт")
 
         if submitted:
-            row = {name: 0.0 for name in feature_names}
-
-            # Заполняем численные признаки
-            for k, v in numeric_input.items():
-                if k in row:
-                    row[k] = float(v)
-
-            # Заполняем категориальные признаки
-            for feat_name, val in cat_input.items():
-                if val is None:
-                    val = "<NA>"
-                # Ищем соответствующий one-hot encoded признак
-                key = f"{feat_name}_{val}"
-                if key in row:
-                    row[key] = 1.0
-                else:
-                    # Если точного совпадения нет, ищем <NA>
-                    key_na = f"{feat_name}_<NA>"
-                    if key_na in row:
-                        row[key_na] = 1.0
-
-            X = pd.DataFrame([row], columns=feature_names).to_numpy(dtype="float32")
+            # Создаём полный vector (заполняем нулями отсутствующие признаки)
+            full_row = {name: 0.0 for name in feature_names}
+            full_row.update(row)
+            
+            X = pd.DataFrame([full_row], columns=feature_names).to_numpy(dtype="float32")
             y_pred = model.predict(X, verbose=0)
             val = float(y_pred.reshape(-1)[0])
             st.success(f"Предсказание для '{st.session_state.trained_target}': {val:.4f}")

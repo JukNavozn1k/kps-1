@@ -6,6 +6,7 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
+from sklearn.preprocessing import LabelEncoder
 
 
 TargetName = Literal["home_goals", "away_goals", "total_goals", "goal_diff"]
@@ -21,6 +22,7 @@ class Dataset:
     target_name: TargetName
     y_mean: float | None
     y_std: float | None
+    label_encoders: dict[str, LabelEncoder] | None = None
 
 
 def filter_dataset_features(
@@ -51,6 +53,7 @@ def filter_dataset_features(
         target_name=dataset.target_name,
         y_mean=dataset.y_mean,
         y_std=dataset.y_std,
+        label_encoders=dataset.label_encoders,
     )
 
 
@@ -144,7 +147,20 @@ def load_ftball_dataset(
         if X_num[c].dtype == bool:
             X_num[c] = X_num[c].astype(int)
 
-    X_cat = pd.get_dummies(df[cat_cols].astype("string"), dummy_na=True) if cat_cols else pd.DataFrame(index=df.index)
+    # Label encoding для категориальных признаков вместо one-hot encoding
+    X_cat_data = {}
+    label_encoders = {}
+    if cat_cols:
+        for col in cat_cols:
+            col_data = df[col].astype("string").copy()
+            # Заменяем NaN на специальное значение перед кодированием
+            col_data = col_data.fillna("__NaN__")
+            le = LabelEncoder()
+            X_cat_data[col] = le.fit_transform(col_data)
+            label_encoders[col] = le
+        X_cat = pd.DataFrame(X_cat_data, index=df.index)
+    else:
+        X_cat = pd.DataFrame(index=df.index)
 
     X_df = pd.concat([X_num, X_cat], axis=1)
 
@@ -203,4 +219,5 @@ def load_ftball_dataset(
         target_name=target,
         y_mean=y_mean,
         y_std=y_std,
+        label_encoders=label_encoders if label_encoders else None,
     )
