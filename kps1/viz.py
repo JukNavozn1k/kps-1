@@ -28,59 +28,104 @@ def plot_network_graph(
     model_type: str,
     output_dim: int = 1,
 ):
-    fig, ax = plt.subplots(figsize=(10, 4.2))
+    model_type_u = (model_type or "").upper()
+
+    max_neurons = 8
+    max_input = 6
+    max_output = 3
+
+    layer_sizes: list[int] = [input_dim] + [sp.units for sp in layers] + [output_dim]
+
+    def display_count(size: int, *, kind: str) -> int:
+        if kind == "input":
+            return min(max_input, max(1, size))
+        if kind == "output":
+            return min(max_output, max(1, size))
+        return min(max_neurons, max(1, size))
+
+    shown_counts: list[int] = []
+    for i, sz in enumerate(layer_sizes):
+        if i == 0:
+            shown_counts.append(display_count(sz, kind="input"))
+        elif i == len(layer_sizes) - 1:
+            shown_counts.append(display_count(sz, kind="output"))
+        else:
+            shown_counts.append(display_count(sz, kind="hidden"))
+
+    n_layers = len(layer_sizes)
+    fig_w = max(9.0, 1.8 * n_layers)
+    fig, ax = plt.subplots(figsize=(fig_w, 5.6))
     ax.set_axis_off()
 
-    nodes: list[tuple[str, str]] = [("Input", f"dim={input_dim}")]
-    for i, spec in enumerate(layers):
-        nodes.append((f"Dense {i+1}", f"units={spec.units}\nact={spec.activation}\ndrop={spec.dropout}"))
-    nodes.append(("Output", f"dim={output_dim}\nlinear"))
+    xs = [i * 1.6 for i in range(n_layers)]
+    r = 0.08
 
-    n = len(nodes)
-    xs = list(range(n))
+    def y_positions(count: int) -> list[float]:
+        if count == 1:
+            return [0.0]
+        span = 1.2
+        top = span / 2
+        step = span / (count - 1)
+        return [top - k * step for k in range(count)]
 
-    def draw_box(x: float, y: float, title: str, body: str):
-        ax.add_patch(
-            plt.Rectangle(
-                (x - 0.42, y - 0.32),
-                0.84,
-                0.64,
-                fill=False,
-                linewidth=1.4,
-            )
-        )
-        ax.text(x, y + 0.16, title, ha="center", va="center", fontsize=10)
-        ax.text(x, y - 0.08, body, ha="center", va="center", fontsize=8)
+    node_pos: list[list[tuple[float, float]]] = []
+    for li in range(n_layers):
+        cnt = shown_counts[li]
+        ys = y_positions(cnt)
+        node_pos.append([(xs[li], y) for y in ys])
 
-    y0 = 0.0
-    for i, (title, body) in enumerate(nodes):
-        draw_box(xs[i], y0, title, body)
+    def draw_neuron(x: float, y: float, *, alpha: float = 1.0):
+        ax.add_patch(plt.Circle((x, y), r, fill=False, linewidth=1.0, alpha=alpha))
 
-    def arrow(x1: float, y1: float, x2: float, y2: float, alpha: float = 1.0):
+    def draw_edge(p1: tuple[float, float], p2: tuple[float, float], *, alpha: float = 0.35):
+        (x1, y1), (x2, y2) = p1, p2
         ax.annotate(
             "",
-            xy=(x2 - 0.44, y2),
-            xytext=(x1 + 0.44, y1),
-            arrowprops=dict(arrowstyle="->", linewidth=1.0, alpha=alpha),
+            xy=(x2 - r * 1.2, y2),
+            xytext=(x1 + r * 1.2, y1),
+            arrowprops=dict(arrowstyle="-", linewidth=0.6, alpha=alpha),
         )
 
-    model_type_u = (model_type or "").upper()
+    def connect_layers(src: int, dst: int, *, alpha: float):
+        for p1 in node_pos[src]:
+            for p2 in node_pos[dst]:
+                draw_edge(p1, p2, alpha=alpha)
+
     if model_type_u == "CFNN":
-        hidden_count = max(0, len(layers))
-        for i in range(1, 1 + hidden_count):
-            arrow(xs[0], y0, xs[i], y0, alpha=0.9)
-
-        for i in range(1, 1 + hidden_count):
-            for j in range(i + 1, 1 + hidden_count):
-                arrow(xs[i], y0, xs[j], y0, alpha=0.35)
-
-        for i in range(0, 1 + hidden_count):
-            arrow(xs[i], y0, xs[-1], y0, alpha=0.7 if i in (0, hidden_count) else 0.35)
+        for i in range(0, n_layers - 1):
+            connect_layers(i, i + 1, alpha=0.25)
+        for i in range(0, n_layers - 2):
+            for j in range(i + 2, n_layers):
+                connect_layers(i, j, alpha=0.10)
     else:
-        for i in range(n - 1):
-            arrow(xs[i], y0, xs[i + 1], y0, alpha=0.95)
+        for i in range(n_layers - 1):
+            connect_layers(i, i + 1, alpha=0.25)
 
-    ax.set_title(model_type_u)
+    for li in range(n_layers):
+        for (x, y) in node_pos[li]:
+            draw_neuron(x, y)
+
+        real_sz = layer_sizes[li]
+        shown = shown_counts[li]
+        if real_sz > shown:
+            ax.text(xs[li], -0.85, "…", ha="center", va="center", fontsize=14)
+
+        if li == 0:
+            ax.text(xs[li], 0.95, f"Вход\n{input_dim}", ha="center", va="center", fontsize=9)
+        elif li == n_layers - 1:
+            ax.text(xs[li], 0.95, f"Выход\n{output_dim}", ha="center", va="center", fontsize=9)
+        else:
+            sp = layers[li - 1]
+            ax.text(
+                xs[li],
+                0.95,
+                f"Слой {li}\nDense {sp.units}\n{sp.activation}, drop={sp.dropout}",
+                ha="center",
+                va="center",
+                fontsize=8,
+            )
+
+    ax.set_title("Граф нейросети: " + model_type_u)
     fig.tight_layout()
     return fig
 
