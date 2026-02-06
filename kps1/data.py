@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 
+from kps1.feature_engineering import CustomFeature, apply_custom_features
+
 
 TargetName = Literal["home_goals", "away_goals", "total_goals", "goal_diff"]
 
@@ -23,6 +25,39 @@ class Dataset:
     y_mean: float | None
     y_std: float | None
     label_encoders: dict[str, LabelEncoder] | None = None
+
+
+def apply_dataset_custom_features(
+    dataset: Dataset,
+    custom_features: list[CustomFeature],
+) -> Dataset:
+    """Добавляет кастомные признаки к датасету."""
+    if not custom_features:
+        return dataset
+    
+    X_train_extended, feature_names_extended = apply_custom_features(
+        dataset.X_train,
+        dataset.feature_names,
+        custom_features,
+    )
+    
+    X_val_extended, _ = apply_custom_features(
+        dataset.X_val,
+        dataset.feature_names,
+        custom_features,
+    )
+    
+    return Dataset(
+        X_train=X_train_extended,
+        y_train=dataset.y_train,
+        X_val=X_val_extended,
+        y_val=dataset.y_val,
+        feature_names=feature_names_extended,
+        target_name=dataset.target_name,
+        y_mean=dataset.y_mean,
+        y_std=dataset.y_std,
+        label_encoders=dataset.label_encoders,
+    )
 
 
 def filter_dataset_features(

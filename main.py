@@ -3,11 +3,13 @@ import pandas as pd
 import streamlit as st
 import numpy as np
 
-from kps1.data import load_ftball_dataset, filter_dataset_features
+from kps1.data import load_ftball_dataset, filter_dataset_features, apply_dataset_custom_features
+from kps1.feature_engineering import CustomFeature, get_operation_info, create_feature_from_expression, suggest_interesting_features
 from kps1.experiments import ExperimentRecord, record_to_dict
 from kps1.models import DenseLayerSpec, build_cfnn, build_fnn
 from kps1.training import make_loss, make_optimizer, train_with_backprop_demo
 from kps1.viz import plot_backprop_gradients, plot_network_graph, plot_training_curves
+
 
 
 def _init_state():
@@ -37,6 +39,8 @@ def _init_state():
         st.session_state.selected_features_all = []
     if "available_features" not in st.session_state:
         st.session_state.available_features = []
+    if "custom_features" not in st.session_state:
+        st.session_state.custom_features = []
 
 
 def _sync_layers_count(n_layers: int):
@@ -191,6 +195,99 @@ if selected_features:
     ds = filter_dataset_features(ds, selected_features)
 else:
     ds = filter_dataset_features(ds, st.session_state.available_features)
+
+# ===== Интерфейс кастомных признаков =====
+st.sidebar.divider()
+st.sidebar.header("🔧 Кастомные признаки")
+
+with st.sidebar.expander("Создать новый признак", expanded=False):
+    st.caption("Выбери операцию")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        operation = st.selectbox(
+            "Операция",
+            options=[
+                "product", "ratio", "sum", "diff",
+                "sin", "cos", "tan", "exp", "log", "sqrt",
+                "square", "cube", "abs"
+            ],
+            format_func=lambda op: get_operation_info(op).get("name", op),
+            key="custom_op_select",
+        )
+    
+    with col2:
+        custom_feature_name = st.text_input("Имя признака", value="", key="custom_name_input")
+    
+    # Получаем информацию об операции
+    op_info = get_operation_info(operation)
+    is_binary = op_info.get("binary", False)
+    
+    st.caption(f"📝 {op_info.get('description', '')}")
+    
+    # Выбор признаков
+    col1, col2 = st.columns(2)
+    with col1:
+        feature1 = st.selectbox(
+            "Признак 1",
+            options=st.session_state.available_features,
+            key="custom_feat1_select",
+        )
+    
+    if is_binary:
+        with col2:
+            feature2 = st.selectbox(
+                "Признак 2",
+                options=st.session_state.available_features,
+                key="custom_feat2_select",
+            )
+    else:
+        feature2 = None
+    
+    # Кнопка добавления
+    if st.button("✅ Добавить признак", key="add_custom_feature_btn"):
+        if not custom_feature_name:
+            st.error("Введи имя признака")
+        else:
+            cf = create_feature_from_expression(
+                name=custom_feature_name,
+                feature1_name=feature1,
+                feature2_name=feature2,
+                operation=operation,
+                feature_names=st.session_state.available_features,
+            )
+            if cf:
+                st.session_state.custom_features.append(cf)
+                st.success(f"Добавлен признак: {custom_feature_name}")
+                st.rerun()
+            else:
+                st.error("Ошибка при создании признака")
+
+# Список созданных кастомных признаков
+if st.session_state.custom_features:
+    st.sidebar.subheader(f"Активные ({len(st.session_state.custom_features)})")
+    for i, cf in enumerate(st.session_state.custom_features):
+        col1, col2 = st.sidebar.columns([3, 1])
+        with col1:
+            st.caption(f"• {cf.name}")
+        with col2:
+            if st.button("❌", key=f"del_custom_{i}", help="Удалить"):
+                st.session_state.custom_features.pop(i)
+                st.rerun()
+
+# Предложения интересных признаков
+st.sidebar.subheader("💡 Идеи")
+if st.sidebar.button("Предложить интересную комбинацию"):
+    ideas = suggest_interesting_features(st.session_state.available_features, max_count=3)
+    for idea in ideas:
+        if idea not in st.session_state.custom_features:
+            st.session_state.custom_features.append(idea)
+    st.sidebar.success(f"Добавлено {len(ideas)} признаков!")
+    st.rerun()
+
+# Применяем кастомные признаки к датасету
+if st.session_state.custom_features:
+    ds = apply_dataset_custom_features(ds, st.session_state.custom_features)
 
 tab_train, tab_data, tab_pred = st.tabs(["Обучение", "Датасет", "Предикт"])
 
