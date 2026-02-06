@@ -219,6 +219,10 @@ with tab_train:
             layers=specs_preview,
             model_type=model_type,
             output_dim=1,
+            include_input_to_hidden=bool(cfnn_include_input_to_hidden),
+            include_prev_hidden_to_hidden=bool(cfnn_include_prev_hidden_to_hidden),
+            include_input_to_output=bool(cfnn_include_input_to_output),
+            include_hidden_to_output=bool(cfnn_include_hidden_to_output),
         )
         st.pyplot(fig_graph, clear_figure=True)
 

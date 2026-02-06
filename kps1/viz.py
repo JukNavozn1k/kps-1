@@ -27,6 +27,10 @@ def plot_network_graph(
     *,
     model_type: str,
     output_dim: int = 1,
+    include_input_to_hidden: bool = True,
+    include_prev_hidden_to_hidden: bool = True,
+    include_input_to_output: bool = True,
+    include_hidden_to_output: bool = True,
 ):
     model_type_u = (model_type or "").upper()
     # Build per-layer info
@@ -83,21 +87,56 @@ def plot_network_graph(
         ax.text(xs[i], min(ys) - 0.8, body, ha="center", va="center", fontsize=8)
         layer_positions.append(pts)
 
-    # draw full connections between adjacent layers
-    for i in range(n_layers - 1):
-        pos_a = layer_positions[i]
-        pos_b = layer_positions[i + 1]
-        for (x1, y1) in pos_a:
-            for (x2, y2) in pos_b:
-                ax.plot([x1 + 0.18, x2 - 0.18], [y1, y2], color="black", linewidth=0.6, alpha=0.35)
+    # For FNN: draw full connections between adjacent layers
+    if model_type_u == "FNN":
+        for i in range(n_layers - 1):
+            pos_a = layer_positions[i]
+            pos_b = layer_positions[i + 1]
+            for (x1, y1) in pos_a:
+                for (x2, y2) in pos_b:
+                    ax.plot([x1 + 0.18, x2 - 0.18], [y1, y2], color="black", linewidth=0.6, alpha=0.35)
 
-    # for CFNN, draw additional skip connections (lighter)
+    # For CFNN: draw different types of connections with different colors/styles
     if model_type_u == "CFNN":
-        for i in range(n_layers - 2):
-            for j in range(i + 2, n_layers):
-                for (x1, y1) in layer_positions[i]:
-                    for (x2, y2) in layer_positions[j]:
-                        ax.plot([x1 + 0.18, x2 - 0.18], [y1, y2], color="black", linewidth=0.5, alpha=0.10)
+        # Connection type 1: Вход → скрытые слои (Input to hidden layers)
+        if include_input_to_hidden:
+            for i in range(1, n_layers - 1):
+                pos_a = layer_positions[0]
+                pos_b = layer_positions[i]
+                for (x1, y1) in pos_a:
+                    for (x2, y2) in pos_b:
+                        ax.plot([x1 + 0.18, x2 - 0.18], [y1, y2], 
+                               color="blue", linewidth=0.6, alpha=0.4, linestyle="-")
+        
+        # Connection type 2: Предыдущие скрытые → следующие (Hidden to hidden)
+        if include_prev_hidden_to_hidden:
+            for i in range(1, n_layers - 1):
+                for j in range(i + 1, n_layers - 1):
+                    pos_a = layer_positions[i]
+                    pos_b = layer_positions[j]
+                    for (x1, y1) in pos_a:
+                        for (x2, y2) in pos_b:
+                            ax.plot([x1 + 0.18, x2 - 0.18], [y1, y2], 
+                                   color="green", linewidth=0.5, alpha=0.3, linestyle="--")
+        
+        # Connection type 3: Вход → выход (Input to output)
+        if include_input_to_output and n_layers > 1:
+            pos_a = layer_positions[0]
+            pos_b = layer_positions[-1]
+            for (x1, y1) in pos_a:
+                for (x2, y2) in pos_b:
+                    ax.plot([x1 + 0.18, x2 - 0.18], [y1, y2], 
+                           color="red", linewidth=0.7, alpha=0.5, linestyle="-")
+        
+        # Connection type 4: Скрытые → выход (Hidden to output)
+        if include_hidden_to_output and len(layers) > 0:
+            for i in range(1, n_layers - 1):
+                pos_a = layer_positions[i]
+                pos_b = layer_positions[-1]
+                for (x1, y1) in pos_a:
+                    for (x2, y2) in pos_b:
+                        ax.plot([x1 + 0.18, x2 - 0.18], [y1, y2], 
+                               color="orange", linewidth=0.6, alpha=0.35, linestyle=":")
 
     # adjust limits
     x_min, x_max = min(xs) - 1.0, max(xs) + 1.0
@@ -111,6 +150,23 @@ def plot_network_graph(
     ax.set_ylim(y_min, y_max)
 
     ax.set_title(f"Схема сети ({model_type_u})")
+    
+    # Add legend for CFNN connection types
+    if model_type_u == "CFNN":
+        from matplotlib.lines import Line2D
+        legend_elements = []
+        if include_input_to_hidden:
+            legend_elements.append(Line2D([0], [0], color="blue", linewidth=2, label="Вход → скрытые слои"))
+        if include_prev_hidden_to_hidden:
+            legend_elements.append(Line2D([0], [0], color="green", linewidth=2, linestyle="--", label="Скрытые → скрытые"))
+        if include_input_to_output:
+            legend_elements.append(Line2D([0], [0], color="red", linewidth=2, label="Вход → выход"))
+        if include_hidden_to_output:
+            legend_elements.append(Line2D([0], [0], color="orange", linewidth=2, linestyle=":", label="Скрытые → выход"))
+        
+        if legend_elements:
+            ax.legend(handles=legend_elements, loc="upper left", fontsize=8, framealpha=0.9)
+    
     fig.tight_layout()
     return fig
 
