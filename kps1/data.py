@@ -23,6 +23,37 @@ class Dataset:
     y_std: float | None
 
 
+def filter_dataset_features(
+    dataset: Dataset,
+    selected_features: list[str],
+) -> Dataset:
+    """Фильтрует датасет, оставляя только выбранные признаки."""
+    if not selected_features:
+        return dataset
+    
+    # Найти индексы выбранных признаков
+    indices = []
+    for feat in selected_features:
+        if feat in dataset.feature_names:
+            indices.append(dataset.feature_names.index(feat))
+    
+    if not indices:
+        return dataset
+    
+    indices_arr = np.array(indices)
+    
+    return Dataset(
+        X_train=dataset.X_train[:, indices_arr],
+        y_train=dataset.y_train,
+        X_val=dataset.X_val[:, indices_arr],
+        y_val=dataset.y_val,
+        feature_names=[dataset.feature_names[i] for i in indices],
+        target_name=dataset.target_name,
+        y_mean=dataset.y_mean,
+        y_std=dataset.y_std,
+    )
+
+
 def _parse_result(result: str) -> tuple[float, float]:
     if not isinstance(result, str):
         return (np.nan, np.nan)

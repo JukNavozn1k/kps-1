@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 import numpy as np
 
-from kps1.data import load_ftball_dataset
+from kps1.data import load_ftball_dataset, filter_dataset_features
 from kps1.experiments import ExperimentRecord, record_to_dict
 from kps1.models import DenseLayerSpec, build_cfnn, build_fnn
 from kps1.training import make_loss, make_optimizer, train_with_backprop_demo
@@ -31,6 +31,10 @@ def _init_state():
             st.session_state.raw_df = pd.read_csv("ftball.csv")
         except Exception:
             st.session_state.raw_df = None
+    if "selected_features_all" not in st.session_state:
+        st.session_state.selected_features_all = []
+    if "available_features" not in st.session_state:
+        st.session_state.available_features = []
 
 
 def _sync_layers_count(n_layers: int):
@@ -158,6 +162,33 @@ ds = load_ftball_dataset(
 if ds.X_train.size == 0 or ds.y_train.size == 0:
     st.error("После фильтрации данных не осталось обучающих примеров. Проверь ftball.csv")
     st.stop()
+
+# Обновляем список доступных признаков
+if st.session_state.available_features != ds.feature_names:
+    st.session_state.available_features = list(ds.feature_names)
+    st.session_state.selected_features_all = list(ds.feature_names)
+
+# Интерфейс выбора признаков
+st.sidebar.divider()
+st.sidebar.header("Признаки")
+selected_features = st.sidebar.multiselect(
+    "Выбери признаки для обучения",
+    options=st.session_state.available_features,
+    default=st.session_state.selected_features_all,
+    help="Оставь пустым = используются все признаки",
+)
+
+# Обновляем session state
+if selected_features:
+    st.session_state.selected_features_all = selected_features
+else:
+    st.session_state.selected_features_all = list(st.session_state.available_features)
+
+# Применяем фильтр к датасету
+if selected_features:
+    ds = filter_dataset_features(ds, selected_features)
+else:
+    ds = filter_dataset_features(ds, st.session_state.available_features)
 
 tab_train, tab_data, tab_pred = st.tabs(["Обучение", "Датасет", "Предикт"])
 
@@ -384,62 +415,57 @@ with tab_pred:
             return uniq[:500]
 
         with st.form("predict_form"):
-            st.caption("Введи параметры матча (упрощённо).")
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                odds_1 = st.number_input("odds 1", min_value=0.0, value=2.0)
-                odds_x = st.number_input("odds X", min_value=0.0, value=3.2)
-                odds_2 = st.number_input("odds 2", min_value=0.0, value=3.0)
-            with c2:
-                odds_1x = st.number_input("odds 1X", min_value=0.0, value=1.3)
-                odds_x2 = st.number_input("odds X2", min_value=0.0, value=1.6)
-                odds_12 = st.number_input("odds 12", min_value=0.0, value=1.3)
-            with c3:
-                start_date = st.date_input("Дата матча")
-                is_expired = st.checkbox("is_expired", value=True)
-
-            prediction = st.selectbox("prediction", _choices("prediction"))
-            market = st.selectbox("market", _choices("market"))
-            competition_name = st.selectbox("competition_name", _choices("competition_name"))
-            competition_cluster = st.selectbox("competition_cluster", _choices("competition_cluster"))
-            federation = st.selectbox("federation", _choices("federation"))
+            st.caption("Введи параметры матча (только используемые признаки).")
+            
+            # Численные признаки
+            numeric_features = {
+                "odds_1": ("odds 1 (коэффициент на победу хозяев)", 2.0),
+                "odds_X": ("odds X (коэффициент на ничью)", 3.2),
+                "odds_2": ("odds 2 (коэффициент на победу гостей)", 3.0),
+                "odds_1X": ("odds 1X", 1.3),
+                "odds_X2": ("odds X2", 1.6),
+                "odds_12": ("odds 12", 1.3),
+                "start_year": ("Год матча", 2024.0),
+                "start_month": ("Месяц матча", 1.0),
+                "start_day": ("День матча", 1.0),
+                "is_expired": ("Матч завершён", 0.0),
+            }
+            
+            numeric_input = {}
+            for feat_key, (label, default) in numeric_features.items():
+                if feat_key in feature_names:
+                    numeric_input[feat_key] = st.number_input(label, min_value=0.0, value=default)
+            
+            # Категориальные признаки
+            cat_features = ["prediction", "market", "competition_name", "competition_cluster", "federation"]
+            cat_input = {}
+            for feat_name in cat_features:
+                # Проверяем есть ли энкодированные версии этого признака
+                has_cat = any(f.startswith(feat_name + "_") for f in feature_names)
+                if has_cat:
+                    cat_input[feat_name] = st.selectbox(feat_name, _choices(feat_name))
 
             submitted = st.form_submit_button("Посчитать предикт")
 
         if submitted:
             row = {name: 0.0 for name in feature_names}
 
-            num_map = {
-                "odds_1": float(odds_1),
-                "odds_X": float(odds_x),
-                "odds_2": float(odds_2),
-                "odds_1X": float(odds_1x),
-                "odds_X2": float(odds_x2),
-                "odds_12": float(odds_12),
-                "start_year": float(start_date.year),
-                "start_month": float(start_date.month),
-                "start_day": float(start_date.day),
-                "is_expired": float(1 if is_expired else 0),
-            }
-            for k, v in num_map.items():
+            # Заполняем численные признаки
+            for k, v in numeric_input.items():
                 if k in row:
-                    row[k] = v
+                    row[k] = float(v)
 
-            cat_map = {
-                "prediction": prediction,
-                "market": market,
-                "competition_name": competition_name,
-                "competition_cluster": competition_cluster,
-                "federation": federation,
-            }
-            for col, val in cat_map.items():
+            # Заполняем категориальные признаки
+            for feat_name, val in cat_input.items():
                 if val is None:
                     val = "<NA>"
-                key = f"{col}_{val}"
+                # Ищем соответствующий one-hot encoded признак
+                key = f"{feat_name}_{val}"
                 if key in row:
                     row[key] = 1.0
                 else:
-                    key_na = f"{col}_<NA>"
+                    # Если точного совпадения нет, ищем <NA>
+                    key_na = f"{feat_name}_<NA>"
                     if key_na in row:
                         row[key_na] = 1.0
 
